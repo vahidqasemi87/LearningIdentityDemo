@@ -370,3 +370,123 @@ Great, the roles are added as well. Let’s now proceed with the actual tasks.
 Step16
 
 Registering a New User
+
+Now, we need an endpoint to allow users to register. To this endpoint the user has to post his name,email and password. If these are valid, we register the user with the default role as User.
+
+For this, let’s create Models/RegisterModel.cs with the following properties. The user has to post data with this object to register.
+
+ public class RegisterModel
+{
+    [Required]
+    public string FirstName { get; set; }
+    [Required]
+    public string LastName { get; set; }
+    [Required]
+    public string Username { get; set; }
+    [Required]
+    public string Email { get; set; }
+    [Required]
+    public string Password { get; set; }
+}
+
+
+---------------------------------------------------------------------
+Step17
+
+In IUserService.cs, add a function definition to Register the user accepting a Register Model.
+
+Task<string> RegisterAsync(RegisterModel model);
+
+--------------------------------------------------------------------
+Step18
+
+
+Go to the Concrete class, UserService to implement the Register Function.
+
+public async Task<string> RegisterAsync(RegisterModel model)
+{
+    var user = new ApplicationUser
+    {
+        UserName = model.Username,
+        Email = model.Email,
+        FirstName = model.FirstName,
+        LastName = model.LastName
+    };
+    var userWithSameEmail = await _userManager.FindByEmailAsync(model.Email);
+    if (userWithSameEmail == null)
+    {
+        var result = await _userManager.CreateAsync(user, model.Password);
+        if (result.Succeeded)
+        {
+            await _userManager.AddToRoleAsync(user, Authorization.default_role.ToString());                 
+        }
+        return $"User Registered with username {user.UserName}";
+    }
+    else
+    {
+        return $"Email {user.Email } is already registered.";
+    }
+}
+
+----------------------------------------------------------------
+Step19
+Here, we take in the RegisterModel object, and create a new ApplicationUser model object from it. We will also have some kind of validation to check if the email is already registered with our api. If the email is not used already, we will proceed to creating the user and adding a Role ‘User’.Else, let’s send a message that says, “Already Registered.”
+
+Let’s call this method from an API endpoint. Go to Controllers/UserController and add this set of code. Here we take in the Register model and pass it to user service, which returns a specific string message.
+
+[HttpPost("register")]
+public async Task<ActionResult> RegisterAsync(RegisterModel model)
+{
+    var result = await _userService.RegisterAsync(model);
+    return Ok(result);
+}
+----------------------------------------------------------------
+Step20
+
+Testing with Postman
+Open up Postman and define a raw JSON object that is to be posted to <localhost>/api/user/register
+
+https://localhost:44346/user/register
+
+
+-----------------------------------------------------------------
+Step21
+You will get a message confirming user registration.
+
+Requesting Secured Controller with Postman
+Remember we have a secured Controller / endpoint at ../api/secured ? Let’s try to access it via Postman.
+
+As expected, we get a 401 Unauthorized Error. Why? Because we have not passed a valid JWT token to the endpoint yet.
+How do you get the token ? Well, let’s build another endpoint that generates this JWT token for us.
+-----------------------------------------------------------------
+
+Step22
+
+
+Generate JWT Token
+Now that we have completed Registration,
+let’s try to fetch the JWT Token. We will build a Token Generation function that takes in a TokenRequestModel
+(email, password) , validates if the email and password , and build a token for us.
+
+Start by creating Models/TokenRequestModel.cs
+
+public class TokenRequestModel
+{
+    [Required]
+    public string Email { get; set; }
+    [Required]
+    public string Password { get; set; }
+}
+
+Now, create another class, Models/AuthenticationModel.cs which is basically the response from the endpoint.
+The endoint is supposed to return you a status message, user details, his/her roles and finally our token.
+
+public class AuthenticationModel
+{
+    public string Message { get; set; }
+    public bool IsAuthenticated { get; set; }
+    public string UserName { get; set; }
+    public string Email { get; set; }
+    public List<string> Roles { get; set; }
+    public string Token { get; set; }
+}

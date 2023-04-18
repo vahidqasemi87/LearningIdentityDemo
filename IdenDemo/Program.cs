@@ -93,11 +93,14 @@ public class Program
 			{
 
 				var logger = loggerFactory.CreateLogger<Program>();
-				logger.LogError(ex, "An error occurred seeding the DB.");
+
+				logger
+					.LogError(exception: ex, message: "An error occurred seeding the DB.");
 			}
 		}
 
 		// Configure the HTTP request pipeline.
+
 		if (app.Environment.IsDevelopment())
 		{
 			app.UseSwagger();
