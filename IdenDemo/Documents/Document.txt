@@ -1,0 +1,372 @@
+﻿https://codewithmukesh.com/blog/aspnet-core-api-with-jwt-authentication/
+
+Step 01
+
+Installing the Required Packages
+Install-Package Microsoft.AspNetCore.Authentication.JwtBearer
+Install-Package Microsoft.AspNetCore.Identity.EntityFrameworkCore
+Install-Package Microsoft.EntityFrameworkCore
+Install-Package Microsoft.EntityFrameworkCore.Design
+Install-Package Microsoft.EntityFrameworkCore.SqlServer
+Install-Package Microsoft.EntityFrameworkCore.Tools
+Install-Package Microsoft.VisualStudio.Web.CodeGeneration.Design
+Install-Package System.IdentityModel.Tokens.Jwt
+
+----------------------------------------------------------------------
+Step 02
+
+
+JWT Settings
+Let’s add the Settings for JWT to our appsettings.json
+
+"JWT": {
+    "key": "C1CF4B7DC4C4175B6618DE4F55CA4",
+    "Issuer": "SecureApi",
+    "Audience": "SecureApiUser",
+    "DurationInMinutes": 60
+  }
+
+
+  Key – The Super Secret Key that will be used for Encryption. You can move this somewhere else for extra security.
+Issuer – identifies the principal that issued the JWT.
+Audience – identifies the recipients that the JWT is intended for.
+DurationInMinutes – Defines the Minutes the generated JWT will remain valid.
+---------------------------------------------------------------------
+  Step 03
+
+  Now create a new class, Settings/JWT.cs 
+  which will be used to read data from our previously created JWT Section of appsettings.json
+  using the IOptions feature of ASP.NET Core.
+
+
+  public class JWT
+    {
+        public string Key { get; set; }
+        public string Issuer { get; set; }
+        public string Audience { get; set; }
+        public double DurationInMinutes { get; set; }
+    }
+-------------------------------------------------------------
+Step 04 
+
+Application User Model
+Create a new class, 
+Models/ApplicationUser.cs.
+Here we inherit from the IdentityUser Base Class and add additional
+properties like FirstName and LastName of the user.
+
+
+public class ApplicationUser : IdentityUser
+{
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+}
+
+------------------------------------------------------------
+Step05
+
+
+Adding DbContext
+We will keep this part simple.
+We will use the DbContext Class only for adding the Identity(User)
+Tables and nothing more. Create a class, Contexts/ApplicationDbContext.cs.
+
+public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
+{
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
+    {
+    }
+}
+
+--------------------------------------------------------------
+Step06
+
+Adding the Connection String
+Now, Add the ConnectionString of the Database you want to point to.
+Add these lines to appsettings.json
+
+"ConnectionStrings": {
+    "DefaultConnection": "Your Connection String Here"
+  },
+----------------------------------------------------------
+Step07
+
+Seeding the Database
+What is Seeding?
+During development,
+we may need some sample data in our database to test the application.
+EF Core addresses this requirement by the Seed Functionality.
+It essentially means that we can push sample data to the database at defined entry events.
+In this scenario we will add default Roles and a default user to our database using this feature.
+
+Now let’s create a class, Constants/Authorization.cs in which we define the Supported Roles and a default user.
+----------------------------------------------------------
+Step08
+
+Seeding the Database
+What is Seeding?
+During development, we may need some sample data in our database to test the application. EF Core addresses this requirement by the Seed Functionality. It essentially means that we can push sample data to the database at defined entry events. In this scenario we will add default Roles and a default user to our database using this feature.
+
+Now let’s create a class, Constants/Authorization.cs in which we define the Supported Roles and a default user.
+
+
+
+public class Authorization
+{
+    public enum Roles
+    {
+        Administrator,
+        Moderator,
+        User
+    }
+    public const string default_username = "user";
+    public const string default_email = "user@secureapi.com";
+    public const string default_password = "Pa$$w0rd.";
+    public const Roles default_role = Roles.User;
+}
+
+
+Line #3 to 8 – We define a Roles Enum of our Supported Roles, ie, Administrator, Moderator, User
+Line #9 to 12 – We define the default user details. Note that the default user will have a User Role attached,
+
+-----------------------------------------------------------
+Step08
+
+With that out of the way, Let’s create another class,
+Contexts/ApplicationDbContextSeed.cs to add the default data.
+
+
+public class ApplicationDbContextSeed
+    {
+        public static async Task SeedEssentialsAsync(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager)
+        {
+            //Seed Roles
+            await roleManager.CreateAsync(new IdentityRole(Authorization.Roles.Administrator.ToString()));
+            await roleManager.CreateAsync(new IdentityRole(Authorization.Roles.Moderator.ToString()));
+            await roleManager.CreateAsync(new IdentityRole(Authorization.Roles.User.ToString()));
+            //Seed Default User
+            var defaultUser = new ApplicationUser { UserName = Authorization.default_username, Email = Authorization.default_email, EmailConfirmed = true, PhoneNumberConfirmed = true };
+            if (userManager.Users.All(u => u.Id != defaultUser.Id))
+            {
+                await userManager.CreateAsync(defaultUser, Authorization.default_password);
+                await userManager.AddToRoleAsync(defaultUser, Authorization.default_role.ToString());
+            }
+        }
+    }
+
+--------------------------------------------------------------
+
+Step09
+
+We have made the seed class, but haven’t invoked it in our application yet.
+I prefer to call this seed class during the start of the application.
+For this, modify the Program.cs/Main class like the below.
+
+
+public async static Task Main(string[] args)
+{
+    var host = CreateHostBuilder(args)
+                 .Build();
+    using (var scope = host.Services.CreateScope())
+    {
+        var services = scope.ServiceProvider;
+        var loggerFactory = services.GetRequiredService<ILoggerFactory>();
+        try
+        {
+            //Seed Default Users
+            var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+            var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
+            await ApplicationDbContextSeed.SeedEssentialsAsync(userManager, roleManager);
+        }
+        catch (Exception ex)
+        {
+            var logger = loggerFactory.CreateLogger<Program>();
+            logger.LogError(ex, "An error occurred seeding the DB.");
+        }
+    }
+    host.Run();
+}
+
+
+Here we are calling the Seed class while the application starts. Once the application fires up, the default data will be posted to the database if these data doesn’t exists. You get the point yeah?
+
+:)  :)  :)  :)  
+-----------------------------------------------------------
+Step10
+
+
+Secured Controller
+
+For this demonstration, we will be securing this controller.
+<localhost>/api/secured. We have added an Authorize Attribute to the top,
+which means that only authorized requests will be able to access the endpoint.
+We have an action method, GetSecuredData (a dummy method) which is to be secured by our API.
+
+
+[Authorize]
+[Route("api/[controller]")]
+[ApiController]
+public class SecuredController : ControllerBase
+{
+    [HttpGet]
+    public async Task<IActionResult> GetSecuredData()
+    {
+        return Ok("This Secured Data is available only for Authenticated Users.");
+    }
+}
+
+----------------------------------------------------------
+
+Step11
+
+We will need a Services class that contains the Core User Functions like Register,
+Generate JWTs etc. Create a new Interface, Services/IUserService.cs
+
+public interface IUserService
+{
+}
+
+-------------------------------------------------------------
+Step12
+
+And it’s concrete class, Services/UserService.cs.
+Let them be empty for now. We will add the functions whenever we need them further in this article.
+
+ public class UserService : IUserService
+    {
+        private readonly UserManager<ApplicationUser> _userManager;
+        private readonly RoleManager<IdentityRole> _roleManager;
+        private readonly JWT _jwt;
+        public UserService(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IOptions<JWT> jwt)
+        {
+            _userManager = userManager;
+            _roleManager = roleManager;
+            _jwt = jwt.Value;
+        }
+    }
+----------------------------------------------------------
+Step13
+
+
+User Controller
+Create a Controller that consumes the UserService. Let’s call this controller,
+Controllers/UserController.cs. Do Inject the UserService Interface as well.
+
+[Route("api/[controller]")]
+    [ApiController]
+    public class UserController : ControllerBase
+    {
+        private readonly IUserService _userService;
+        public UserController(IUserService userService)
+        {
+            _userService = userService;
+        }
+    }
+----------------------------------------------------------
+Step14
+
+
+Configuring Startup
+Finally, let’s modify the 2 functions of Startup.cs
+
+public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+{
+    if (env.IsDevelopment())
+    {
+        app.UseDeveloperExceptionPage();
+    }
+    app.UseHttpsRedirection();
+    app.UseRouting();
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.UseEndpoints(endpoints =>
+    {
+        endpoints.MapControllers();
+    });
+}
+----------------------------------------------------------
+Step15
+
+
+Make sure that app.UseAuthentication(); always comes before app.UseAuthorization();,
+since you technically need to Authenticate the user first, and then Authorize.
+
+Now let’s configure the authentication , Add the context classes , userservice classes to our application.
+
+public void ConfigureServices(IServiceCollection services)
+{
+    //Configuration from AppSettings
+    services.Configure<JWT>(_configuration.GetSection("JWT"));
+    //User Manager Service
+    services.AddIdentity<ApplicationUser, IdentityRole>().AddEntityFrameworkStores<ApplicationDbContext>();
+    services.AddScoped<IUserService, UserService>();
+    //Adding DB Context with MSSQL
+    services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseSqlServer(
+            _configuration.GetConnectionString("DefaultConnection"),
+            b => b.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName)));
+    //Adding Athentication - JWT
+    services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+        .AddJwtBearer(o =>
+        {
+            o.RequireHttpsMetadata = false;
+            o.SaveToken = false;
+            o.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.Zero,
+                ValidIssuer = _configuration["JWT:Issuer"],
+                ValidAudience = _configuration["JWT:Audience"],
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Key"]))
+            };
+        });
+    services.AddControllers();
+}
+
+Line #4 Adds the JWT Section from appsettings to our JWT Class.
+Line 6 and 7 Adds Identity and User Service to the application.
+Line #14 to 36 is for JWT Authentication. Let’s go in detail.
+
+Line #14 is a default extension in ASP.NET Core to add Authentication Service to the application.
+Line #16 and 17 defined the default type of authentication we need, ie, JWT Bearer Authentication.
+From Line #20 it is about configuring the JWT Bearer.
+Line #22 defines if we need an HTTPS connection. Let’s set it to false.
+Line #32 to 32 reads the settings from appsettings.json and adds to the JWT Object.
+----------------------------------------------------------------------
+
+Step15
+
+Migrations & Updating the Database
+Now that our context classes,
+required services, and connection strings are added,
+let’s go and generate our database. Run the following commands on the Package Manager Console to apply the migrations.
+
+add-migration "initial"
+update-database
+
+
+Once the operations are completed, you will get a “Done” message on the console.
+Build and Run the Application. Open up SQL Server Object Explorer to investigate the created database.
+Let’s check if the default user and Roles are added to the Database.
+You can see the the database was created succesfully. Open up the AspNetUser Table. This is the table from Identity that store the user details.
+
+
+You can see the the database was created succesfully. Open up the AspNetUser Table. This is the table from Identity that store the user details.
+
+
+Our default user was added. Let’s now check if the Seeded Roles are added. For this open up the AspNetUserRoles tables.
+
+Great, the roles are added as well. Let’s now proceed with the actual tasks.
+
+-------------------------------------------------------------------------
+
+Step16
+
+Registering a New User
